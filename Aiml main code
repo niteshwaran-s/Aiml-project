@@ -1,0 +1,255 @@
+import tkinter as tk
+from tkinter import ttk, messagebox
+import numpy as np
+from sklearn.ensemble import RandomForestClassifier
+
+# --------------------------- Dummy Model ---------------------------
+def train_dummy_model():
+    X = np.random.rand(200, 8)
+    y = np.random.randint(0, 2, 200)
+    model = RandomForestClassifier()
+    model.fit(X, y)
+    return model
+
+def predict_liver_disease(inputs, model):
+    values = np.array([[inputs['total_bilirubin'], inputs['direct_bilirubin'],
+                        inputs['alkaline_phosphatase'], inputs['sgpt'],
+                        inputs['sgot'], inputs['albumin'],
+                        inputs['albumin_and_globulin_ratio'], inputs['age']]])
+    prediction = model.predict(values)[0]
+    probability = model.predict_proba(values)[0][prediction] * 100
+    return prediction, probability
+
+# --------------------------- Scrollable Frame ---------------------------
+def create_scrollable_frame(root):
+    container = ttk.Frame(root)
+    canvas = tk.Canvas(container)
+    scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
+    scrollable_frame = ttk.Frame(canvas)
+
+    scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+    canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+    canvas.configure(yscrollcommand=scrollbar.set)
+    canvas.pack(side="left", fill="both", expand=True)
+    scrollbar.pack(side="right", fill="y")
+    container.pack(fill="both", expand=True)
+    return scrollable_frame
+
+# --------------------------- Doctor Prescription Generator ---------------------------
+def build_prescription(inputs, prob, pred):
+    lines = []
+    if pred == 1:
+        lines.append(("⚠️ HIGH RISK OF LIVER DISEASE\n", "risk"))
+    else:
+        lines.append(("✅ LOW RISK OF LIVER DISEASE\n", "safe"))
+    lines.append((f"Probability of positive: {prob:.2f}%\n\n", None))
+
+    tb, db, alp, sgpt, sgot, alb, agr = (
+        inputs["total_bilirubin"], inputs["direct_bilirubin"],
+        inputs["alkaline_phosphatase"], inputs["sgpt"],
+        inputs["sgot"], inputs["albumin"],
+        inputs["albumin_and_globulin_ratio"]
+    )
+
+    # Liver-specific warnings
+    if tb > 1.2:
+        lines.append(("⚠️ Total Bilirubin high — possible liver inflammation.\n", "risk"))
+    if db > 0.3:
+        lines.append(("⚠️ Direct Bilirubin high — possible bile duct obstruction.\n", "risk"))
+    if alp > 147:
+        lines.append(("⚠️ Alkaline Phosphatase high — possible gallbladder/liver issue.\n", "risk"))
+    if sgpt > 56 or sgot > 45:
+        lines.append(("⚠️ SGPT/SGOT elevated — liver stress likely.\n", "risk"))
+    if alb < 3.5:
+        lines.append(("⚠️ Low Albumin — reduced protein synthesis capacity.\n", "risk"))
+    if agr < 1.0:
+        lines.append(("⚠️ Low A/G Ratio — may suggest chronic liver condition.\n", "risk"))
+
+    # Suggested next steps
+    lines.append(("\n🩺 Suggested next steps:\n", None))
+    if pred == 1:
+        lines.append((
+            "- Confirm with LFT, ultrasound\n"
+            "- Avoid alcohol & fatty foods\n"
+            "- Stay hydrated (8–10 glasses/day)\n"
+            "- Consult hepatologist soon\n", "risk"))
+    else:
+        lines.append((
+            "- Maintain balanced diet\n"
+            "- Avoid excessive alcohol\n"
+            "- Annual liver screening advised\n", "safe"))
+
+    lines.append(("\n⚠️ Educational use only — consult a doctor for medical advice.", None))
+    return lines
+
+
+# --------------------------- Main Application ---------------------------
+class LiverApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("🩺 Liver Disease Prediction System")
+        self.root.geometry("950x750")
+
+        self.model_liver = train_dummy_model()
+        self.goto_home()
+
+    # ---------------------- SCREEN 1: Patient Info ----------------------
+    def goto_home(self):
+        for widget in self.root.winfo_children():
+            widget.destroy()
+        frame = ttk.Frame(self.root, padding=20)
+        frame.pack(fill="both", expand=True)
+        ttk.Label(frame, text="🩺 Liver Disease Prediction", font=("Times New Roman", 26, "bold")).pack(pady=30)
+        self.patient_entries = {}
+        for label in ["Name", "Age", "Contact"]:
+            ttk.Label(frame, text=f"{label}:", font=("Times New Roman", 14)).pack(pady=8)
+            entry = ttk.Entry(frame, width=30)
+            entry.pack()
+            self.patient_entries[label] = entry
+        ttk.Button(frame, text="Next ➡️", command=self.save_patient_info).pack(pady=25)
+
+    def save_patient_info(self):
+        self.patient = {key: entry.get() for key, entry in self.patient_entries.items()}
+        self.show_screen2()
+
+    # ---------------------- SCREEN 2: Medical Inputs ----------------------
+    def show_screen2(self):
+        for widget in self.root.winfo_children():
+            widget.destroy()
+        frame = ttk.Frame(self.root, padding=20)
+        frame.pack(fill="both", expand=True)
+        ttk.Label(frame, text="Enter Medical Details", font=("Times New Roman", 22, "bold")).grid(row=0, column=0, columnspan=4, pady=15)
+
+        self.medical, self.user_ranges = {}, {}
+        fields = [
+            ("Age", "age", "—"),
+            ("Gender (1=Male, 0=Female)", "gender", "1 = Male, 0 = Female"),
+            ("Total Bilirubin", "total_bilirubin", "0.1 – 1.2 mg/dL"),
+            ("Direct Bilirubin", "direct_bilirubin", "0.0 – 0.3 mg/dL"),
+            ("Alkaline Phosphatase", "alkaline_phosphatase", "44 – 147 IU/L"),
+            ("SGPT", "sgpt", "7 – 56 U/L"),
+            ("SGOT", "sgot", "8 – 45 U/L"),
+            ("Albumin", "albumin", "3.5 – 5.0 g/dL"),
+            ("Albumin and Globulin Ratio", "albumin_and_globulin_ratio", "1.0 – 2.5"),
+        ]
+
+        ttk.Label(frame, text="Parameter", font=("Times New Roman", 13, "bold")).grid(row=1, column=0, padx=10)
+        ttk.Label(frame, text="Your Value", font=("Times New Roman", 13, "bold")).grid(row=1, column=1, padx=10)
+        ttk.Label(frame, text="Your Normal Range", font=("Times New Roman", 13, "bold")).grid(row=1, column=2, padx=10)
+
+        for i, (label, key, rng) in enumerate(fields, start=2):
+            ttk.Label(frame, text=label).grid(row=i, column=0, sticky="w", padx=10, pady=5)
+            val = ttk.Entry(frame, width=15)
+            val.grid(row=i, column=1, padx=10, pady=5)
+            rng_box = ttk.Entry(frame, width=25)
+            rng_box.insert(0, rng)
+            rng_box.grid(row=i, column=2, padx=10, pady=5)
+            self.medical[key], self.user_ranges[key] = val, rng_box
+
+        ttk.Button(frame, text="Predict 🧠", command=self.goto_screen3).grid(row=len(fields)+3, column=0, columnspan=4, pady=30)
+
+    # ---------------------- SCREEN 3: Doctor's Report ----------------------
+    def goto_screen3(self):
+        try:
+            inputs = {key: float(entry.get()) for key, entry in self.medical.items()}
+        except ValueError:
+            messagebox.showerror("Error", "Please fill all medical fields with valid numbers.")
+            return
+        self.saved_ranges = {key: entry.get() for key, entry in self.user_ranges.items()}
+        self.inputs = inputs
+        self.prediction, self.probability = predict_liver_disease(inputs, self.model_liver)
+        self.show_screen3()
+
+    def show_screen3(self):
+        for widget in self.root.winfo_children():
+            widget.destroy()
+        frame = create_scrollable_frame(self.root)
+        ttk.Label(frame, text="Doctor's Report", font=("Times New Roman", 26, "bold")).pack(pady=20)
+
+        ttk.Label(frame, text=f"Patient: {self.patient.get('Name','')} | Age: {self.patient.get('Age','')} | Contact: {self.patient.get('Contact','')}",
+                  font=("Times New Roman", 14)).pack(pady=5)
+
+        ttk.Label(frame, text="Medical Information", font=("Times New Roman", 18, "bold")).pack(pady=15)
+        table = ttk.Frame(frame)
+        table.pack(pady=10)
+
+        ttk.Label(table, text="Parameter", font=("Times New Roman", 13, "bold")).grid(row=0, column=0)
+        ttk.Label(table, text="Value", font=("Times New Roman", 13, "bold")).grid(row=0, column=1)
+        ttk.Label(table, text="Range", font=("Times New Roman", 13, "bold")).grid(row=0, column=2)
+
+        for i, (label, key) in enumerate([
+            ("Total Bilirubin", "total_bilirubin"), ("Direct Bilirubin", "direct_bilirubin"),
+            ("Alkaline Phosphatase", "alkaline_phosphatase"), ("SGPT", "sgpt"),
+            ("SGOT", "sgot"), ("Albumin", "albumin"), ("A/G Ratio", "albumin_and_globulin_ratio")
+        ], start=1):
+            ttk.Label(table, text=label).grid(row=i, column=0, sticky="w", padx=10)
+            ttk.Label(table, text=str(self.inputs[key])).grid(row=i, column=1)
+            ttk.Label(table, text=self.saved_ranges.get(key,""), foreground="gray").grid(row=i, column=2, sticky="w")
+
+        ttk.Label(frame, text="Prediction Result", font=("Times New Roman", 18, "bold")).pack(pady=15)
+        text = (f"Liver disease detected ({self.probability:.2f}% chance)"
+                if self.prediction == 1 else f"No liver disease detected ({self.probability:.2f}% chance)")
+        color = "red" if self.prediction == 1 else "green"
+        ttk.Label(frame, text=text, font=("Times New Roman", 14, "bold"), foreground=color).pack(pady=10)
+
+        ttk.Button(frame, text="Next ➡️ View Prescription & Diet", command=self.show_screen4).pack(pady=25)
+        ttk.Button(frame, text="⬅️ Back", command=self.show_screen2).pack()
+
+    # ---------------------- SCREEN 4: Doctor Prescription + Diet ----------------------
+    def show_screen4(self):
+        for widget in self.root.winfo_children():
+            widget.destroy()
+        frame = create_scrollable_frame(self.root)
+        ttk.Label(frame, text="Doctor’s Prescription & Diet Advice", font=("Times New Roman", 26, "bold")).pack(pady=20)
+
+        # Doctor Prescription
+        ttk.Label(frame, text="🩺 Prescription Notes", font=("Times New Roman", 18, "bold")).pack(pady=15)
+        text_box = tk.Text(frame, height=18, width=100, wrap="word", font=("Consolas", 10))
+        text_box.pack(pady=10)
+        text_box.tag_config("risk", foreground="red", font=("Consolas", 10, "bold"))
+        text_box.tag_config("safe", foreground="green", font=("Consolas", 10, "bold"))
+        for txt, tag in build_prescription(self.inputs, self.probability, self.prediction):
+            text_box.insert(tk.END, txt, tag if tag else None)
+        text_box.config(state="disabled")
+
+        # Diet Section
+        ttk.Label(frame, text="🍎 Diet Recommendations", font=("Times New Roman", 18, "bold"), foreground="green").pack(pady=20)
+        if self.prediction == 1:
+            eat = [
+                "✅ Fresh fruits (apple, papaya, berries)",
+                "✅ Vegetables (carrot, spinach, beetroot)",
+                "✅ High-fiber foods and whole grains",
+                "✅ Olive oil and fish (omega-3 rich)",
+                "✅ 8–10 glasses of water daily"
+            ]
+            avoid = [
+                "❌ Alcohol & carbonated drinks",
+                "❌ Fried/oily foods",
+                "❌ Red meat and processed snacks",
+                "❌ High-sugar desserts & soft drinks",
+                "❌ Excess salt and spicy food"
+            ]
+            ttk.Label(frame, text="Recommended to Eat:", font=("Times New Roman", 14, "bold")).pack(anchor="w", padx=30)
+            for item in eat:
+                ttk.Label(frame, text=item, font=("Times New Roman", 12)).pack(anchor="w", padx=50)
+            ttk.Label(frame, text="Avoid These Foods:", font=("Times New Roman", 14, "bold"), foreground="red").pack(anchor="w", padx=30, pady=(10,0))
+            for item in avoid:
+                ttk.Label(frame, text=item, font=("Times New Roman", 12)).pack(anchor="w", padx=50)
+        else:
+            tips = [
+                "✅ Balanced diet rich in fruits and vegetables.",
+                "✅ Avoid alcohol and heavy junk food.",
+                "✅ Stay hydrated and exercise daily.",
+                "✅ Get annual liver check-ups."
+            ]
+            for tip in tips:
+                ttk.Label(frame, text=tip, font=("Times New Roman", 12)).pack(anchor="w", padx=40)
+
+        ttk.Button(frame, text="🏠 Back to Home", command=self.goto_home).pack(pady=25)
+        ttk.Button(frame, text="⬅️ Back to Report", command=self.show_screen3).pack(pady=5)
+
+
+# --------------------------- Run App ---------------------------
+root = tk.Tk()
+app = LiverApp(root)
+root.mainloop()

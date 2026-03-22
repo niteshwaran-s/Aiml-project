@@ -1,0 +1,55 @@
+import pandas as pd
+import numpy as np
+
+# ---------------------------
+# Create synthetic UCI-like liver dataset
+# ---------------------------
+np.random.seed(42)
+rows = 350  # number of patient samples
+
+# Generate realistic ranges for each column
+age = np.random.randint(18, 90, rows)  # Age in years
+gender = np.random.choice([0, 1], rows)  # 0=female, 1=male
+total_bilirubin = np.round(np.random.uniform(0.3, 6.0, rows), 1)
+direct_bilirubin = np.round(np.random.uniform(0.1, 4.0, rows), 1)
+alkaline_phosphotase = np.random.randint(150, 400, rows)
+alamine_aminotransferase = np.random.randint(10, 200, rows)
+aspartate_aminotransferase = np.random.randint(10, 200, rows)
+total_proteins = np.round(np.random.uniform(5.0, 9.0, rows), 1)
+albumin = np.round(np.random.uniform(2.5, 5.5, rows), 1)
+albumin_globulin_ratio = np.round(np.random.uniform(0.5, 2.5, rows), 1)
+
+# Risk factors (simplified pattern)
+# probability of disease increases with high bilirubin, enzymes, and low albumin
+risk_score = (
+    (total_bilirubin > 1.2).astype(int)
+    + (direct_bilirubin > 0.5).astype(int)
+    + (alkaline_phosphotase > 250).astype(int)
+    + (alamine_aminotransferase > 70).astype(int)
+    + (albumin < 3.5).astype(int)
+)
+
+# normalize and make binary target
+prob = 1 / (1 + np.exp(-0.5 * (risk_score - 2)))
+target = (prob > 0.45).astype(int)
+
+# Combine to dataframe
+df = pd.DataFrame({
+    "Age": age,
+    "Gender": gender,
+    "Total_Bilirubin": total_bilirubin,
+    "Direct_Bilirubin": direct_bilirubin,
+    "Alkaline_Phosphotase": alkaline_phosphotase,
+    "Alamine_Aminotransferase": alamine_aminotransferase,
+    "Aspartate_Aminotransferase": aspartate_aminotransferase,
+    "Total_Proteins": total_proteins,
+    "Albumin": albumin,
+    "Albumin_and_Globulin_Ratio": albumin_globulin_ratio,
+    "Dataset": target
+})
+
+# Save to CSV
+df.to_csv("liver.csv", index=False)
+
+print("\nliver.csv created successfully with", len(df), "records!")
+print("You can now use this CSV for your Liver Disease Prediction app.")
